@@ -1,0 +1,650 @@
+<!doctype html>
+<!-- 自動生成ファイル。直接編集しないこと。
+     生成元: webapp/src/index.html
+     生成コマンド: node build.mjs -->
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Explorebot Web</title>
+<link rel="icon" href="./assets/favicon.ico" sizes="16x16 32x32 48x48">
+<!--
+  単一ソース（SurrobotのCLAUDE.mdルールを継承）。このファイルだけを編集する。
+  build.mjs が dist/index.html と dist/offline.html（ENGINE_SCRIPTSブロックのみ
+  差し替え）を機械生成する。dist/ を直接編集しないこと。
+
+  v0.14 画面全面再設計（「画面がまだ小さい・レイアウトを一新」への対応）:
+    - **論理キャンバスを1500x950へ拡大**（v0.13の1100x720から）。サイズの
+      "仕組み"自体はSurrobotのWeb版と同じ boxed+zoom（`fitBoxedZoom()`、
+      単一のCSS `zoom`で一括変倍、縦横比を保つ）を踏襲するが、Surrobotの
+      1100x720という"値"は据え置かない。SurrobotはPCP2軸+散布図2枚程度の
+      シンプルな画面だが、Explorebotは「コンター3枚+全幅PCP」という情報量の
+      多い画面のため、素の論理キャンバス自体を大きくしている
+      （zoomクランプは0.32〜1.3、余白24pxに拡大）。
+    - **レイアウトを一から再構成**: 左上にロボ、その下に予測値カード。
+      右側にコンターパネル3枚（横並び、各X/Y軸を選択可）。画面下部は
+      全幅・薄いパラレルコーディネートプロット。
+    - **PCPの各軸にレバー（つまみ）を追加**: 従来の透明ヒットレクトによる
+      ドラッグはそのまま（Pointer Events）だが、現在値の頂点に目に見える
+      レバー形状（横長カプセル+グリップ線）を描画し、フェーダーを上下に
+      動かして応答を探るという操作感を明示する。
+    - **背景の線は学習データではなくモデルのサンプリング**: PCPの背景に
+      実測データの折れ線を描くのをやめ、Sobol'低食い違い列で常駐GPを
+      サンプリングした「場」のみを背景として使う（元々あった観測データの
+      ポリライン/点は削除）。
+    - **コンターパネル（旧: 散布図）**: 点群の散布ではなく、選んだ2変数の
+      グリッド上で常駐GPを1回バッチpredict（`api.sim_surface`、v0.14で新設）
+      した値を色で塗ったコンター/ヒートマップ表示に変更。点として描くのは
+      ★最適候補と◆精度向上候補の2点のみ（観測データやSobol'点は描かない）。
+    - **★◆ボタンカード・CSV DLカードを削除**: 旧`.robo-col`にあった
+      「最適候補へジャンプ／精度向上点へジャンプ／CSV追記してDL」の3ボタン
+      カードは廃止（レバー操作が主な探索手段になったため）。★◆自体は
+      コンターパネル上のマーカーとして残り、クリックでジャンプする動作は
+      維持。
+    - **外挿の考慮を完全に撤廃**: data_min/data_maxに基づくamber警告・
+      ノッチ・ステータス文言・pred-valueのextrapクラスを全て削除。
+  ヘッダー（ロゴ・言語トグル・歯車）とステータスバー・ABOUTオーバーレイは
+  v0.13のまま変更なし。ロジックはすべてsrc/app.js。
+
+  v0.15 修正・微調整（実機フィードバック）:
+    - **tf.simSurface is not a function バグ修正**: explorebot-worker-client.jsの
+      window.ExplorebotEngineOnline公開オブジェクトにsimSurfaceを含め忘れていた
+      （関数自体はexport済みだったが、窓口オブジェクトのリテラルに
+      キーを足し忘れていた）。offline-engine.js側は元々正しかった。
+    - **予測Yカードを削除**、その分ロボ＋吹き出し(.speech-bubble)が
+      左列を丸ごと使う。予測値そのものはPCPのy軸頂点ラベルに残っている
+      ので情報は失われない。初期フェーズの次の初期点座標は吹き出し内の
+      ステータス文言に統合。
+    - **CSVドロップを画面全体で受付**: 元々document全体のdrop/dragoverは
+      拾っていたが、視覚的な手がかりがPCP内の小さな枠だけだったため
+      伝わりにくかった。ドラッグ中は画面全体を覆う点線オーバーレイ
+      (#globalDropOverlay)を表示するようにした。
+    - **右下クレジットにライセンスも表示**: Surrobotの
+      「© 著者 ・ CC BY-NC 4.0」と同じ体裁で、Explorebot自身の正しい
+      ライセンス（独占的ライセンス）を併記。
+    - **フォントサイズをSurrobot基準に拡大**: html直下のfont-sizeを
+      14px→16px（Surrobotは実はここを一切上書きせずブラウザ既定の
+      16pxのまま、各要素に絶対px値を指定している。14pxへの縮小は本アプリ
+      が独自に導入していたもので、全体的な「小さい」印象の主因だった）。
+      加えてラベル系の細かいrem値も底上げしている。
+
+  v0.16 バグ修正・強調表示強化（実機フィードバック）:
+    - **PCPレバーがドラッグできないバグ修正**: 現在値の頂点に描く可視の
+      レバーノブ(動的レイヤー)がドラッグ用の透明ヒットレクト(静的レイヤー)
+      より上に重なって描かれていたため、ノブ自体をクリックするとイベントを
+      奪ってしまいドラッグが始まらなかった。ノブに`pointer-events:none`を
+      付けてクリックを常に下のヒットレクトへ通す。
+    - **コンターが均一色になるバグ修正**: 色ドメインをPCP/Sobol'場と
+      共有していたため、Sobol'場側の極端な外挿値にドメインが引っ張られ、
+      実際に描くコンターの値幅が相対的に潰れて見た目がほぼ単色になって
+      いた。コンター専用の色ドメイン(今表示している3枚のmean値のみから
+      算出)に分離。
+    - **コンター3枚の軸重複を回避**: 既定の軸割当を「全ての(x,y)組み合わせ
+      を列挙して先頭から3枚に割り当てる」方式に変更（旧cols[i%d]方式は
+      変数が2つの時パネル0と2が完全に同じ組になっていた）。また、
+      X/Yセレクタで同じ列を選んでしまった場合は自動的に入れ替えて衝突を
+      避ける。
+    - **ロボの吹き出しをSurrobotと同一デザイン・同一位置に**:
+      `.char-panel`/`.chat-bubble`/`.char-box`と同じ構造（縦flexで
+      下寄せ、吹き出し→ロボの順に積み上げ、吹き出し下端の矢印がロボを
+      指す）をそのまま移植。
+    - **PCPは無彩色化し★◆を動的に光らせて目立たせる**: 「パラレルコード
+      に色は不要」とのフィードバックにより、Sobol'場の背景線から色分けを
+      除去（淡いモノトーンの一色に統一）。色による情報付与はコンター
+      パネル側に一本化。その分、★(次の本命候補)・◆(精度向上点)の発光を
+      強化（パルス幅・グロー強度を拡大し、外側へ広がって消えるhalo(後光)
+      リングを追加）。★は◆よりひと回り大きく・速く光らせ、「次に測る
+      べき点」としての優先度を視覚的に強調する。
+
+  v0.17 実機フィードバック一式（ヘッダーサイズ・PCP文字重複・操作系刷新）:
+    - **ヘッダー各部のpx値をSurrobotへ厳密一致**: ロゴ40→44px、
+      言語トグルボタン30→34px・font-size 0.75rem→11px、歯車ボタン
+      30→34px（+font-size:16px、内部svgも14→16pxへ）。rem換算でも
+      ズレていたため絶対px値で直接指定し直した。
+    - **PCPのタイトル文字が軸ラベルと重なるバグ修正**: 「PARALLEL
+      COORDINATES（軸のレバーをドラッグして操作）」の常設テキストが
+      左上に絶対配置されており、軸間隔が狭い時に1本目の軸ラベルと重なって
+      いた。レバー機能自体を廃止する（下記）こともあり、このタイトル要素は
+      丸ごと削除。
+    - **PCPレバードラッグを完全廃止**: 「レバーはうごかない、この機能は
+      けす」とのフィードバックにより、ヒットレクト・可視ノブ・
+      pointerdown/move/upハンドラ・ドラッグ中のライブ再計算(evalNow/
+      scheduleEval)を全て削除。自由探索ではなく「候補を選ぶ」操作系へ
+      刷新（下記）。
+    - **吹き出しに3ボタンを追加**: 「最適解を探したい」「精度をあげたい」
+      （複数選択可のトグル）「候補をDL」。トグルで選んだ候補（★=optimize
+      /◆=accuracy）の設計をPCPに緑の線＋青の点（実線、線自体が明滅・発光）
+      で表示する。旧来の★◆破線＋シアン/ゴールドの色分けはPCP上では廃止
+      （コンター上の★◆マーカーはトグルと連動して表示/非表示を切り替える
+      形で残す）。「候補をDL」は選択中の候補（1つでも2つでも）を
+      sim_make_csv（v0.17でリスト入力に対応拡張）でCSVに追記しダウン
+      ロードする。
+    - **コンターの配色を刷新**: シアン→暖色の単純2色ブレンドは中間帯が
+      濁って見えて「ださい」とのフィードバックのため、アプリ自身の
+      アクセントカラー(シアン→ブルー→ゴールド)を使った3段階グラデー
+      ションに変更。
+    - **コンター3枚の軸割当をできる限り完全に分離**: 変数が6個以上あれば
+      3枚が互いに軸を1つも共有しない完全排他な組を優先的に割り当て、
+      足りない場合のみ全組み合わせ列挙にフォールバックする方式に変更。
+
+  v0.18 実機フィードバック一式（サイズ・色対応・可視性・正方形化）:
+    - **吹き出しの3ボタン・ロボ画像を拡大**: 「アイコン、ボタンが小さい」
+      とのフィードバックで`.bubble-btn`のfont-size 0.72rem→0.92rem・
+      padding拡大、`.robo-box`を190px→210pxへ。コンターのX/Yセレクタ・
+      ラベルのfont-sizeも底上げ。
+    - **PCP候補の線・点、コンター候補マーカーの色を候補ごとに固定**:
+      v0.17では両候補とも緑(線)/青(点)で統一していたが、「ボタンと線の
+      色が対応しているから★=optimize◆=accuracyの説明は不要」との指摘で、
+      optimize(★)=緑、accuracy(◆)=青、と各候補の色をボタンの色と揃えた
+      （吹き出しの説明文自体は撤去 -- 下記）。
+    - **コンターの候補マーカーを★/◆から単純な●(塗り丸)に変更**し、
+      色もPCP同様に緑/青へ統一。旧シアン/ゴールドはコンター背景の
+      グラデーション(特に左側のシアン域)と被って見えづらい／実質見えない
+      という可視性バグがあった。
+    - **吹き出しのステータス説明文をsimフェーズでは非表示に**:
+      「下のボタンで候補を選ぶと...現在のベスト:...」は「全て不要」との
+      指摘で削除（ボタン自体の色対応で説明済みのため）。
+    - **「候補をDL」を「選んだ候補をDL」に変更**。
+    - **PCPの各軸の点にカーソルを合わせると値を表示**: 候補ポリラインの
+      頂点circleに軸名・値のtitle(ツールチップ)を追加。
+    - **コンターパネルを正方形化**: `.contour-body`に`aspect-ratio:1/1`を
+      付与し、カードは行の高さいっぱいに引き伸ばさず内容なりの高さにした。
+-->
+<link rel="stylesheet" href="./fonts-embed.css">
+<style>
+  :root {
+    --font-display: 'Chakra Petch', 'Segoe UI', sans-serif;
+    --font-mono: 'IBM Plex Mono', 'Consolas', monospace;
+    --font-body: 'Yu Gothic UI', 'Segoe UI', -apple-system, BlinkMacSystemFont, sans-serif;
+
+    --void:        #06080f;
+    --surface:     #0b0f1a;
+    --surface-2:   #121828;
+    --hairline:    rgba(255,255,255,0.07);
+
+    --ink:         #eef3fa;
+    --ink-dim:     #7a8ca6;
+    --ink-faint:   #3d4a5e;
+
+    --cyan:        #3fc4ec;
+    --blue:        #4f7fe0;
+    --good:        #2fd68e;
+    --gold:        #f0a94e;
+    --bad:         #ef5c5c;
+  }
+
+  * { box-sizing: border-box; }
+  /* Surrobotはhtmlのルートfont-sizeを一切上書きせず、ブラウザ既定の16pxの
+     まま各要素に絶対px値で指定している（14px上書きは本アプリが独自に縮めて
+     いたもの＝「全体に小さい」の原因）。ここでも16pxへ揃える。 */
+  html { font-size: 16px; }
+  html, body { height: 100%; margin: 0; }
+
+  /* Surrobot Web版と同じ「論理キャンバスをzoomで一括変倍」の仕組みを踏襲。
+     値(1500x950)はExplorebot自身の画面情報量に合わせて拡大している。 */
+  body {
+    font-family: var(--font-body); color: var(--ink);
+    margin: 0; min-height: 100vh; overflow: auto;
+    display: flex; align-items: center; justify-content: center;
+    padding: 12px;
+    background:
+      radial-gradient(ellipse 1400px 900px at 50% 15%, rgba(63,196,236,0.10) 0%, transparent 55%),
+      radial-gradient(ellipse 1000px 700px at 85% 90%, rgba(240,169,78,0.06) 0%, transparent 60%),
+      repeating-linear-gradient(0deg,  rgba(63,196,236,0.025) 0px, rgba(63,196,236,0.025) 1px, transparent 1px, transparent 48px),
+      repeating-linear-gradient(90deg, rgba(63,196,236,0.025) 0px, rgba(63,196,236,0.025) 1px, transparent 1px, transparent 48px),
+      #020305;
+  }
+
+  /* かっこいいスクロールバー（Surrobot frontend/index.html の意匠を継承） */
+  .nice-scroll { scrollbar-width: thin; scrollbar-color: rgba(63,196,236,0.32) transparent; }
+  .nice-scroll::-webkit-scrollbar { height: 8px; width: 8px; }
+  .nice-scroll::-webkit-scrollbar-track { background: rgba(0,0,0,0.2); }
+  .nice-scroll::-webkit-scrollbar-thumb { background: rgba(63,196,236,0.28); border-radius: 4px; }
+  .nice-scroll::-webkit-scrollbar-thumb:hover { background: rgba(63,196,236,0.5); }
+
+  /* ---- アプリ本体: 1100x720固定キャンバス、JSがzoomを一括計算 ----
+     v0.19: Surrobot(exe版ウィンドウ実寸 = Web版のboxedサイズ)と**同一の
+     1100x720**へ変更した。v0.18まで1500x950だったため、同じウィンドウでは
+     zoomが約73%にしかならず、ロゴ44px等をSurrobotと同じpx値にしても
+     実寸で一回り小さく表示されていた（「サイズが違う」の真因）。分母を
+     揃えることで、同じpx指定＝同じ実寸になる。 */
+  .app-frame {
+    width: 1100px; height: 720px; flex-shrink: 0;
+    position: relative;
+    background: var(--void);
+    border-radius: 10px;
+    box-shadow: 0 30px 90px rgba(0,0,0,0.55), 0 0 0 1px rgba(255,255,255,0.05);
+    zoom: var(--app-zoom, 1);
+    display: flex; flex-direction: column; overflow: hidden;
+    padding: 18px 20px 10px;
+  }
+
+  /* ---- ヘッダー ----
+     v0.17: 「Tregressor と各部位のサイズがことなる」フィードバックへの対応で、
+     ロゴ/言語トグル/歯車のpx値をSurrobot(web/index.html)の絶対値に
+     厳密一致させた(44px/34px/34px/11px。旧値は40px/30px/30px/0.75remで、
+     rem換算しても一致していなかった)。 */
+  header { flex-shrink: 0; text-align: center; position: relative; padding-bottom: 12px; border-bottom: 1px solid var(--hairline); }
+  .logo { height: 44px; width: auto; filter: drop-shadow(0 0 15px rgba(63,196,236,0.4)); }
+  .lang-toggle {
+    position: absolute; top: 50%; right: 44px; transform: translateY(-50%);
+    display: flex; border: 1px solid rgba(255,255,255,0.12); border-radius: 6px; overflow: hidden;
+  }
+  .lang-toggle-btn {
+    background: none; border: none; color: var(--ink-dim); font-family: var(--font-display);
+    font-size: 11px; font-weight: 700; letter-spacing: 0.5px; padding: 0 10px; height: 34px;
+    cursor: pointer; transition: all 0.2s;
+  }
+  .lang-toggle-btn + .lang-toggle-btn { border-left: 1px solid rgba(255,255,255,0.12); }
+  .lang-toggle-btn.active { color: var(--cyan); background: rgba(63,196,236,0.1); }
+  .lang-toggle-btn:hover:not(.active) { color: var(--ink); background: rgba(255,255,255,0.04); }
+  .settings-gear-btn {
+    position: absolute; top: 50%; right: 0; transform: translateY(-50%);
+    background: none; border: 1px solid rgba(255,255,255,0.12);
+    border-radius: 6px; color: var(--ink-dim); font-size: 16px; width: 34px; height: 34px; cursor: pointer;
+    display: flex; align-items: center; justify-content: center; transition: all 0.2s;
+  }
+  .settings-gear-btn:hover { color: var(--cyan); border-color: rgba(63,196,236,0.35); background: rgba(63,196,236,0.06); }
+
+  /* ---- コンテンツ本体（v0.19でSurrobotと同じ骨格へ）----
+     Surrobotは「左にキャラクターパネル(全高) / 右にダッシュボード」という
+     2カラム構成。Explorebotもこれに合わせ、左列を上段だけでなく**コンテンツ
+     全高**に広げた。こうしないと1100x720の中に220pxのマスコット＋3つの
+     ボタンが収まらない（v0.18までは左列が上段の高さに縛られていた）。
+     右列は上にコンター3枚、下にPCPを積む。 */
+  .content-col { flex: 1; min-height: 0; display: flex; flex-direction: row; gap: 12px; padding-top: 10px; }
+  .right-col { flex: 1; min-width: 0; min-height: 0; display: flex; flex-direction: column; gap: 10px; }
+
+  /* 左: ロボ＋吹き出し。Surrobotの .char-panel/.chat-bubble/.char-box
+     と同じデザイン・同じ位置関係をそのまま踏襲する(v0.16、実機フィードバック
+     「Surrobotと同じデザインと位置を利用して」への対応):
+     - 縦flexで下寄せ(justify-content:flex-end)し、吹き出し→ロボの順に
+       下から積み上げる(吹き出しがロボの真上に来る)。
+     - 吹き出しの下端に矢印(三角形)を1つだけ描き、ロボを指す。 */
+  .left-col { flex: 0 0 250px; display: flex; flex-direction: column; min-height: 0; }
+  .robo-hero {
+    flex: 1; min-height: 0;
+    border: 1px solid rgba(63,196,236,0.22); border-radius: 9px;
+    background: radial-gradient(circle at 50% 30%, rgba(63,196,236,0.13), rgba(11,15,26,0.92));
+    /* v0.21: 下寄せ(flex-end)をやめ、上下中央寄せに。paddingも上下同値に
+       して、ロボ＋吹き出し＋DLボタンの塊の上下に同じ隙間ができるようにする。 */
+    display: flex; flex-direction: column; align-items: center; justify-content: center;
+    padding: 16px 12px;
+  }
+  /* Surrobotの.char-boxと同一の220px（1100x720キャンバスに揃えたので、
+     同じpx値がそのまま同じ実寸になる）。 */
+  .robo-box {
+    width: 220px; height: 220px; border-radius: 50%; overflow: hidden;
+    border: 2px solid rgba(63,196,236,0.4); background: #010204;
+    box-shadow: 0 0 32px rgba(63,196,236,0.32); flex-shrink: 0;
+    transition: all 0.6s cubic-bezier(0.16,1,0.3,1);
+    margin-bottom: 8px;
+  }
+  .robo-box img { width: 100%; height: 100%; object-fit: cover; }
+
+  /* 吹き出し(Surrobotの.chat-bubbleと同一仕様: font-size 13.5px) */
+  .speech-bubble {
+    width: 100%; background: rgba(11,15,26,0.65); border: 1px solid rgba(63,196,236,0.16);
+    border-radius: 10px; padding: 12px 14px; color: #a9d4f5; font-size: 13.5px; line-height: 1.65;
+    margin-bottom: 18px; position: relative; text-align: center;
+    box-shadow: 0 10px 30px rgba(0,0,0,0.5);
+    flex-shrink: 0; overflow-y: hidden;
+  }
+  .speech-bubble::after {
+    content: ""; position: absolute; bottom: -8px; left: 50%; transform: translateX(-50%);
+    border-width: 8px 8px 0; border-style: solid;
+    border-color: rgba(63,196,236,0.16) transparent transparent;
+  }
+  /* v0.18: 「下のボタンで候補を選ぶと...」の説明文はボタン自体の色対応
+     (下記)で自明になったため、simフェーズでは#statusTextを空にする
+     (app.js側)。空でもレイアウトが崩れないようmin-heightは付けない。 */
+  #statusText { white-space: pre-wrap; word-break: auto-phrase; }
+  #statusText:empty { display: none; }
+  #statusText.error { color: var(--bad); }
+
+  /* 吹き出し内の3ボタン（v0.17で導入、v0.18でサイズ拡大・DL文言変更）:
+     「最適解を探したい」「精度をあげたい」はトグル(複数選択可)で、PCPに
+     その候補の線を表示する。選択中はボタン自身も対応する色(緑/青)に
+     光るので、★=optimize/◆=accuracyという説明文は不要（v0.18で削除）。
+     「選んだ候補をDL」は選択中の候補をsim_make_csvでCSV追記してダウン
+     ロードする(選択が無い間は無効)。 */
+  .bubble-actions { display: flex; flex-direction: column; gap: 7px; margin-top: 10px; align-items: stretch; }
+  .bubble-btn {
+    font-family: var(--font-display); font-size: 13px; font-weight: 700; letter-spacing: 0.02em;
+    padding: 9px 12px; border-radius: 999px; border: 1px solid rgba(255,255,255,0.14);
+    background: rgba(255,255,255,0.04); color: var(--ink-dim); cursor: pointer; transition: all 0.15s;
+  }
+  .bubble-btn:hover { color: var(--ink); border-color: rgba(255,255,255,0.3); }
+  .bubble-btn.toggle.active.optimize { color: var(--good); border-color: rgba(47,214,142,0.55); background: rgba(47,214,142,0.14); }
+  .bubble-btn.toggle.active.accuracy { color: var(--blue); border-color: rgba(79,127,224,0.55); background: rgba(79,127,224,0.16); }
+  .bubble-btn:disabled { opacity: 0.4; cursor: default; }
+  .bubble-btn:disabled:hover { color: var(--ink-dim); border-color: rgba(255,255,255,0.14); }
+
+  /* v0.20: 「選んだ候補をDL」は吹き出しの外・ロボの下（対話ではなく確定操作
+     なので、問いかけ＋トグルの並びから切り離す）。 */
+  .download-btn {
+    margin-top: 14px; width: 100%; flex-shrink: 0;
+    font-family: var(--font-display); font-size: 13px; font-weight: 700; letter-spacing: 0.02em;
+    padding: 9px 12px; border-radius: 999px;
+    color: var(--cyan); border: 1px solid rgba(63,196,236,0.35); background: rgba(63,196,236,0.07);
+    cursor: pointer; transition: all 0.15s;
+  }
+  .download-btn:hover:not(:disabled) { background: rgba(63,196,236,0.16); border-color: rgba(63,196,236,0.6); }
+  .download-btn:disabled { opacity: 0.35; cursor: default; }
+
+  /* 「サンプルで試す」はDLと同じ確定操作枠だが別データソースなので、色を
+     ink-dim系(中立)にしてDL(cyan)と役割を視覚的に分ける。DLの直上に配置。
+     margin-top: 4pxでDLボタンとの隙間を狭める(robo-box との隙間は
+     margin-bottom: 8pxで確保するのでボタン線が重ならない)。 */
+  .download-btn.secondary {
+    margin-top: 4px;
+    color: var(--ink-dim); border-color: rgba(255,255,255,0.16); background: rgba(255,255,255,0.03);
+  }
+  .download-btn.secondary:hover:not(:disabled) { color: var(--ink); background: rgba(255,255,255,0.08); border-color: rgba(255,255,255,0.32); }
+
+  /* 右: コンターパネル3枚、横並び。v0.18:「2Dは正方形にしたい」への対応で
+     `.contour-body`に`aspect-ratio:1/1`を付け、カードの高さは
+     行の高さいっぱいに引き伸ばさず(align-items:flex-start)コンテンツ
+     なり(head+正方形body)に任せる。正方形の一辺は各カードの幅(=行の幅を
+     3等分したもの)から決まる -- 行の高さの方が広い場合に余白ができるが、
+     縦横比を優先する。 */
+  .contour-row { flex: 0 0 auto; min-width: 0; display: flex; gap: 10px; align-items: flex-start; }
+  .contour-card {
+    flex: 1 1 0; min-width: 0;
+    display: flex; flex-direction: column;
+    border: 1px solid var(--hairline); border-radius: 9px;
+    background: rgba(11,15,26,0.6); padding: 5px 8px 8px;
+  }
+  .contour-head { flex-shrink: 0; display: flex; align-items: center; gap: 5px; font-family: var(--font-mono); font-size: 12px; color: var(--ink-faint); padding: 1px 1px 6px; }
+  .contour-head select {
+    font-family: var(--font-mono); font-size: 12px; min-width: 0; flex: 1 1 0;
+    background: var(--surface-2); color: var(--ink); border: 1px solid var(--hairline);
+    border-radius: 4px; padding: 2px 3px; cursor: pointer;
+  }
+  .contour-head select:hover { border-color: var(--ink-faint); }
+  .contour-body { aspect-ratio: 1 / 1; width: 100%; flex-shrink: 0; position: relative; }
+  .contour-body canvas { position: absolute; inset: 0; width: 100%; height: 100%; border-radius: 4px; }
+  .contour-body svg { position: absolute; inset: 0; width: 100%; height: 100%; }
+  .contour-note {
+    position: absolute; inset: 0; display: flex; align-items: center; justify-content: center;
+    font-size: 12.5px; color: var(--ink-faint); text-align: center; padding: 0 14px;
+  }
+
+  /* 下段: 全幅・薄いパラレルコーディネートプロット */
+  .pcp-row { flex: 1 1 0; min-height: 0; }
+  .pcp-wrap {
+    height: 100%; min-width: 0; min-height: 0;
+    border: 1px solid var(--hairline); border-radius: 9px;
+    background: linear-gradient(180deg, rgba(18,24,40,0.55), rgba(11,15,26,0.85));
+    position: relative; overflow: hidden;
+    display: flex; flex-direction: column;
+  }
+  .pcp-scroll { flex: 1; min-height: 0; overflow-x: auto; overflow-y: hidden; }
+  .pcp-scroll svg { display: block; height: 100%; }
+
+  /* idle時のドロップゾーン（PCPパネルを転用） */
+  .drop-zone {
+    position: absolute; inset: 0;
+    display: flex; flex-direction: column; align-items: center; justify-content: center;
+    gap: 8px; cursor: pointer; transition: background 0.2s ease;
+  }
+  .drop-zone.hover { background: rgba(63,196,236,0.08); }
+  .drop-zone-hint {
+    font-family: var(--font-display); font-size: 12.5px; color: var(--cyan); font-weight: 700;
+    letter-spacing: 0.08em; text-transform: uppercase;
+  }
+  .drop-zone-sub { font-size: 12.5px; color: var(--ink-dim); text-align: center; line-height: 1.6; max-width: 380px; }
+
+  /* ---- PCP軸線（静的レイヤー） ---- */
+  .pcp-axis-line { stroke: rgba(170,195,220,0.28); }
+
+  /* ---- 軸フィルタ（ブラッシング）のつまみ・範囲表示（v0.21） ----
+     各軸の右脇に横向きの三角つまみを上下限ぶん置き、ドラッグで範囲を狭める。
+     つまみは最前面レイヤー(gFilter)にあり、候補線に覆われない。 */
+  .pcp-filter-handle {
+    fill: rgba(150,175,205,0.75); stroke: #06111c; stroke-width: 0.8;
+    cursor: ns-resize; transition: fill 0.12s;
+  }
+  .pcp-filter-handle:hover { fill: #cfeaff; }
+  .pcp-filter-handle.active { fill: var(--cyan); }
+  .pcp-filter-range { stroke: rgba(63,196,236,0.5); stroke-width: 3; stroke-linecap: round; pointer-events: none; }
+
+  /* ---- 頂点ホバーの値ラベル（v0.21） ----
+     SVGネイティブの<title>はカーソルを止めて1〜2秒待たないと出ないため、
+     即座に読める自前ラベルを最前面レイヤーに描く。 */
+  .pcp-tip-box { fill: rgba(6,17,28,0.95); stroke: rgba(63,196,236,0.55); stroke-width: 1; }
+  .pcp-tip-text { fill: #eef3fa; }
+
+  /* ---- 選択中候補の線・点（v0.18で色をボタンと対応させた） ----
+     旧v0.17は「線=緑/点=青」を両候補共通の色として統一していたが、実機
+     フィードバックで「★=最適候補◆=精度向上点の説明は不要、ボタンと線の
+     色が対応しているから」「精度を上げたいボタンと同じ色を線に」との
+     指摘を受け、各候補ごとに固有の色(optimize=緑=★ボタンの色、
+     accuracy=青=◆ボタンの色)で線・点とも塗るよう変更。破線にはせず、
+     線自体が明滅・発光するアニメーションはそのまま維持。 */
+  .pcp-candidate-line { stroke-width: 3; cursor: default; }
+  .pcp-candidate-line.optimize { stroke: var(--good); animation: candidateLineGlowGreen 1.15s ease-in-out infinite; }
+  .pcp-candidate-line.accuracy { stroke: var(--blue); animation: candidateLineGlowBlue 1.15s ease-in-out infinite; }
+  @keyframes candidateLineGlowGreen {
+    0%, 100% { opacity: 0.62; filter: drop-shadow(0 0 3px rgba(47,214,142,0.55)); }
+    50%      { opacity: 1;    filter: drop-shadow(0 0 14px rgba(47,214,142,1)); }
+  }
+  @keyframes candidateLineGlowBlue {
+    0%, 100% { opacity: 0.62; filter: drop-shadow(0 0 3px rgba(79,127,224,0.55)); }
+    50%      { opacity: 1;    filter: drop-shadow(0 0 14px rgba(79,127,224,1)); }
+  }
+  .pcp-candidate-point { stroke: #eef3fa; stroke-width: 1.6; }
+  .pcp-candidate-point.optimize { fill: var(--good); }
+  .pcp-candidate-point.accuracy { fill: var(--blue); }
+
+  /* ---- コンターパネル上の候補マーカー ----
+     v0.17では常時両方表示ではなく選択された候補のみ表示するよう変更済み。
+     v0.18: 「2D上の点は●で色はあわせる、点滅させる」との指摘で、形状を
+     ★/◆から単純な塗り丸(●)に統一し、色もPCP側・ボタンと同じ緑/青に
+     揃えた（旧シアン/ゴールドはコンターの背景グラデーションと被って
+     見えづらかった）。halo(後光)とパルスは維持。 */
+  .proposal-marker { transform-box: fill-box; transform-origin: center; cursor: pointer; }
+  .proposal-marker.optimize { animation: pulseGreen 1.3s ease-in-out infinite; }
+  .proposal-marker.accuracy { animation: pulseBlue 1.5s ease-in-out infinite; }
+  @keyframes pulseGreen {
+    0%, 100% { transform: scale(1);    filter: drop-shadow(0 0 6px rgba(47,214,142,0.8)); }
+    50%      { transform: scale(1.4);  filter: drop-shadow(0 0 26px rgba(47,214,142,1)); }
+  }
+  @keyframes pulseBlue {
+    0%, 100% { transform: scale(1);    filter: drop-shadow(0 0 6px rgba(79,127,224,0.8)); }
+    50%      { transform: scale(1.32); filter: drop-shadow(0 0 22px rgba(79,127,224,1)); }
+  }
+  .proposal-halo { transform-box: fill-box; transform-origin: center; pointer-events: none; }
+  .proposal-halo.optimize { animation: haloGreen 1.3s ease-in-out infinite; }
+  .proposal-halo.accuracy { animation: haloBlue 1.5s ease-in-out infinite; }
+  @keyframes haloGreen { 0% { transform: scale(0.8); opacity: 0.55; } 100% { transform: scale(2.2); opacity: 0; } }
+  @keyframes haloBlue  { 0% { transform: scale(0.8); opacity: 0.5; }  100% { transform: scale(2.0); opacity: 0; } }
+
+  /* ---- ステータスバー（v0.13のまま） ---- */
+  .status-bar {
+    flex-shrink: 0; margin-top: 10px; height: 24px;
+    display: flex; align-items: center; gap: 8px;
+    background: rgba(11,15,26,0.55); border-radius: 6px;
+    padding: 0 12px; border: 1px solid var(--hairline);
+  }
+  .sb-dot { width: 5px; height: 5px; border-radius: 50%; background: #2d4052; flex-shrink: 0; transition: background 0.3s; }
+  .sb-dot.active { background: var(--good); animation: sbDotPulse 1s infinite ease-in-out; }
+  .sb-dot.warn   { background: var(--gold); animation: sbDotPulse 0.7s infinite ease-in-out; }
+  .sb-dot.error  { background: var(--bad); }
+  @keyframes sbDotPulse { 0%,100% { opacity: 1; } 50% { opacity: 0.3; } }
+  .sb-label { font-family: var(--font-display); font-size: 11.5px; font-weight: 700; letter-spacing: 0.1em; color: var(--ink-dim); text-transform: uppercase; flex-shrink: 0; }
+  .sb-label.active { color: var(--cyan); }
+  .sb-badge {
+    padding: 2px 8px; border-radius: 999px; border: 1px solid var(--hairline);
+    font-size: 11.5px; white-space: nowrap; max-width: 170px;
+    overflow: hidden; text-overflow: ellipsis; flex-shrink: 0;
+  }
+  .sb-badge.goal-badge { cursor: pointer; color: var(--cyan); border-color: rgba(63,196,236,0.3); background: rgba(63,196,236,0.06); }
+  .sb-badge.goal-badge:hover { background: rgba(63,196,236,0.14); }
+  /* Surrobotの「© 著者 ・ ライセンス」の体裁を踏襲（著者名だけでなく
+     ライセンスも併記。ただしSurrobotのCC BY-NC 4.0ではなくExplorebot自身の
+     独占的ライセンスを表示 -- ライセンスは製品ごとに正しいものを示す）。 */
+  /* v0.21: Surrobotの.sb-creditと同一のpx値(11px / padding 3px 11px)。 */
+  .sb-credit {
+    margin-left: auto; font-size: 11px; font-weight: 600; letter-spacing: 0.01em;
+    color: #8fb0f0; opacity: 0.9; white-space: nowrap; flex-shrink: 0; cursor: pointer;
+    transition: all 0.15s ease; padding: 3px 11px; border-radius: 20px;
+    background: rgba(63,196,236,0.09); border: 1px solid rgba(63,196,236,0.28);
+  }
+  .sb-credit:hover { opacity: 1; color: var(--cyan); background: rgba(63,196,236,0.18); border-color: rgba(63,196,236,0.5); }
+
+  /* ---- ライセンス・連絡先オーバーレイ ----
+     v0.21: Surrobotの#creditOverlay/#creditPanel/.settings-* と同一の
+     デザイン・px値に揃えた（パネル padding 24px 28px・width min(420px,...)、
+     ヘッダー margin-bottom 20px / padding-bottom 12px、タイトル14px・
+     letter-spacing 3px、閉じるボタン18px、本文13px/line-height 1.75）。
+     旧値はremベースで微妙にずれていた。 */
+  /* v0.23: .app-frame の内側に置いたので position は absolute（fixedのままだと
+     zoomを持つ祖先がcontaining blockになる挙動に依存して不安定）。これで
+     パネルもロゴ・ロボと同じ zoom 倍率で拡大される。 */
+  #aboutOverlay {
+    position: absolute; inset: 0; background: rgba(0,0,0,0.75);
+    z-index: 100; display: flex; justify-content: center; align-items: center;
+  }
+  #aboutPanel {
+    background: #080d18; border: 1px solid rgba(63,196,236,0.2);
+    border-radius: 12px; padding: 24px 28px; width: min(420px, calc(100% - 48px));
+    box-shadow: 0 25px 80px rgba(0,0,0,0.85);
+  }
+  .settings-header {
+    display: flex; justify-content: space-between; align-items: center;
+    margin-bottom: 20px; padding-bottom: 12px; border-bottom: 1px solid var(--hairline);
+  }
+  .settings-title { font-family: var(--font-display); font-size: 14px; font-weight: 700; letter-spacing: 3px; color: var(--cyan); text-transform: uppercase; }
+  .settings-close-btn {
+    background: none; border: none; color: #6b7280; font-size: 18px; cursor: pointer;
+    line-height: 1; padding: 2px 8px; border-radius: 4px; transition: all 0.15s;
+  }
+  .settings-close-btn:hover { color: var(--bad); background: rgba(239,68,68,0.08); }
+  .settings-info-body { font-size: 13px; color: #8a9bb0; line-height: 1.75; }
+  .settings-info-body a { color: var(--cyan); }
+  .settings-info-body b { color: var(--ink); }
+
+  /* ---- 画面全体どこでもCSVドロップ可: ドラッグ中に全面へ被せる案内オーバーレイ ---- */
+  #globalDropOverlay {
+    position: absolute; inset: 10px; z-index: 50; display: none;
+    border: 3px dashed rgba(63,196,236,0.55); border-radius: 14px;
+    background: rgba(6,10,20,0.55);
+    align-items: center; justify-content: center; pointer-events: none;
+  }
+  #globalDropOverlay.show { display: flex; }
+  #globalDropOverlay .hint {
+    font-family: var(--font-display); font-size: 19px; color: var(--cyan); font-weight: 700;
+    letter-spacing: 0.1em; text-transform: uppercase;
+    text-shadow: 0 0 20px rgba(63,196,236,0.6);
+  }
+</style>
+</head>
+<body>
+  <div class="app-frame">
+    <header>
+      <!-- v0.24: Surrobotと同じ3言語トグル（同じdata-lang名・同じaria-label
+           の書き方）。ボタンが1つ増えるぶん .lang-toggle の右オフセットは
+           歯車ぶんの44pxのままでよい（トグル自身が右へ伸びるのではなく
+           左へ伸びるため）。 -->
+      <div class="lang-toggle" role="group" aria-label="Language / 言語 / 语言">
+        <button type="button" class="lang-toggle-btn" data-lang="ja">日本語</button>
+        <button type="button" class="lang-toggle-btn" data-lang="en">EN</button>
+        <button type="button" class="lang-toggle-btn" data-lang="zh">中文</button>
+      </div>
+      <img src="./assets/logo.png" class="logo" alt="Explorebot">
+      <button id="settingsBtn" class="settings-gear-btn" type="button" title="Settings / 設定">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
+      </button>
+    </header>
+
+    <div id="globalDropOverlay"><div class="hint" id="globalDropHint">DROP CSV</div></div>
+
+    <div class="content-col">
+      <div class="left-col">
+          <div class="robo-hero">
+            <div class="speech-bubble">
+              <div id="statusText">...</div>
+              <div class="bubble-actions">
+                <button type="button" id="btnOptimize" class="bubble-btn toggle optimize"></button>
+                <button type="button" id="btnAccuracy" class="bubble-btn toggle accuracy"></button>
+              </div>
+            </div>
+            <div class="robo-box"><img id="roboImg" src="./assets/robo2_ok.gif" alt=""></div>
+            <!-- v0.21: サンプルCSVを1クリックで試せるボタン。DLと同じ「対話ではなく
+                 確定操作」枠に属するのでdownload-btnを流用しつつ、色をsecondary
+                 (ink-dim系)にしてDL(cyan)と区別する。DLの直上に配置。 -->
+            <button type="button" id="btnTrySample" class="download-btn secondary"></button>
+            <!-- v0.20: DLは「候補を選ぶ」対話とは別の確定操作なので、吹き出しの
+                 外（ロボの下）に置いて役割を視覚的に分ける。 -->
+            <button type="button" id="btnDownload" class="download-btn" disabled></button>
+          </div>
+      </div>
+
+      <div class="right-col">
+        <div class="contour-row">
+          <div class="contour-card">
+            <div class="contour-head">
+              <span>X</span><select id="ct0x"></select>
+              <span>Y</span><select id="ct0y"></select>
+            </div>
+            <div class="contour-body" id="ct0body"><canvas id="ct0canvas"></canvas><svg id="ct0svg"></svg></div>
+          </div>
+          <div class="contour-card">
+            <div class="contour-head">
+              <span>X</span><select id="ct1x"></select>
+              <span>Y</span><select id="ct1y"></select>
+            </div>
+            <div class="contour-body" id="ct1body"><canvas id="ct1canvas"></canvas><svg id="ct1svg"></svg></div>
+          </div>
+          <div class="contour-card">
+            <div class="contour-head">
+              <span>X</span><select id="ct2x"></select>
+              <span>Y</span><select id="ct2y"></select>
+            </div>
+            <div class="contour-body" id="ct2body"><canvas id="ct2canvas"></canvas><svg id="ct2svg"></svg></div>
+          </div>
+        </div>
+
+        <div class="pcp-row">
+          <div class="pcp-wrap" id="pcpWrap">
+            <div class="pcp-scroll nice-scroll" id="pcpScroll"></div>
+            <!-- app.jsがここに<svg>（PCP）または.drop-zoneを描く -->
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="status-bar">
+      <div class="sb-dot" id="sbDot"></div>
+      <div class="sb-label" id="sbLabel">-</div>
+      <span class="sb-badge" id="fileBadge">-</span>
+      <span class="sb-badge goal-badge" id="goalBadge"></span>
+      <div class="sb-credit" id="sbCredit"></div>
+    </div>
+
+    <!-- v0.23【重要】このオーバーレイは必ず .app-frame の**内側**に置く。
+         Surrobotは body 全体に zoom が掛かっており、#creditOverlay も
+         body の子なので同じ倍率で拡大される。Explorebotは .app-frame にのみ
+         zoom を掛けているため、v0.22までフレームの外に置いていたこの
+         オーバーレイだけ zoom が適用されず、他が拡大されても常に1.0倍の
+         まま = 「ポップアップだけ小さい」の真因だった。 -->
+    <div id="aboutOverlay" style="display:none">
+      <div id="aboutPanel">
+        <div class="settings-header">
+          <span class="settings-title" id="aboutTitle">ABOUT</span>
+          <button id="aboutCloseBtn" class="settings-close-btn" type="button">✕</button>
+        </div>
+        <div class="settings-info-body" id="aboutBody"></div>
+      </div>
+    </div>
+  </div>
+
+  <input type="file" id="fileInput" accept=".csv,text/csv" style="display:none">
+
+  <!-- ENGINE_SCRIPTS_START -->
+  <script type="module" src="./explorebot-worker-client.js"></script>
+  <script src="./app.js" defer></script>
+  <!-- ENGINE_SCRIPTS_END -->
+</body>
+</html>
